@@ -295,6 +295,18 @@ def register_provider_routes(app: FastAPI, proxy: Any) -> None:
             )
         return await proxy.handle_anthropic_messages(request)
 
+    @app.post("/omlx/v1/messages")
+    async def omlx_messages(request: Request):
+        omlx_target = (
+            getattr(proxy.config, "omlx_target_api_url", None)
+            or os.environ.get("OMLX_TARGET_API_URL")
+            or os.environ.get("HEADROOM_OMLX_URL")
+            or "http://127.0.0.1:8888"
+        )
+        return await proxy.handle_anthropic_messages(
+            request, upstream_base_url=omlx_target.rstrip("/")
+        )
+
     @app.post("/anthropic/v1/messages")
     async def foundry_anthropic_messages(request: Request):
         normalize_request_path(request, "/v1/messages")
