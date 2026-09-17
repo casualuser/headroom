@@ -1070,6 +1070,28 @@ class AnthropicHandlerMixin:
             if isinstance(body_model, str) and model != body_model:
                 body["model"] = model
                 body_mutation_tracker.mark_mutated("sanitize_model_id")
+
+            if not upstream_base_url:
+                omlx_target = (
+                    getattr(self.config, "omlx_target_api_url", None)
+                    or os.environ.get("OMLX_TARGET_API_URL")
+                    or os.environ.get("HEADROOM_OMLX_URL")
+                )
+                if omlx_target:
+                    model_str = str(model).lower()
+                    cloud_prefixes = ("claude-3", "claude-opus", "claude-haiku", "claude-sonnet-4", "claude-2")
+                    is_cloud = model_str.startswith(cloud_prefixes)
+                    local_hints = ("claude-sonnet-5", "gemma", "mlx", "llama", "qwen", "deepseek", "mistral", "phi", "local")
+                    is_local = any(h in model_str for h in local_hints) or not is_cloud
+                    if is_local:
+                        upstream_base_url = omlx_target.rstrip("/")
+                        logger.info(
+                            "[%s] Unified proxy: routing local model '%s' to oMLX: %s",
+                            request_id,
+                            model,
+                            upstream_base_url,
+                        )
+
             messages = body.get("messages", [])
             # Strip streaming-only "index" keys from request content blocks BEFORE any
             # prefix-cache tracking or compression. The proxy's streaming reconstruction
@@ -3648,8 +3670,11 @@ class AnthropicHandlerMixin:
             # every one of those turns to "anthropic" on the dashboard.
             # For a non-Copilot base the builder only joins base + path, so the
             # URL itself is unchanged.
+            request_path = request.url.path
+            if request_path.startswith("/omlx"):
+                request_path = request_path[len("/omlx") :] or "/v1/messages"
             url = (
-                build_copilot_upstream_url(upstream_base_url, request.url.path)
+                build_copilot_upstream_url(upstream_base_url, request_path)
                 if upstream_base_url
                 else build_copilot_upstream_url(self.ANTHROPIC_API_URL, "/v1/messages")
             )
